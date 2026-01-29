@@ -2144,10 +2144,19 @@ class ScratchTranspiler(ast.NodeVisitor):
         # Parse the Python code into an AST
         tree = ast.parse(source_code)
         
-        # Visit all nodes in the AST
-        self.visit(tree)
+        # Only visit class definitions (sprites) and top-level function definitions (hat blocks)
+        # Ignore imports, assignments, and other module-level code
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                # Classes become sprites
+                self.visit_ClassDef(node)
+            elif isinstance(node, ast.FunctionDef):
+                # Top-level functions with hat-block names become scripts in Sprite1
+                if node.name.startswith('when_'):
+                    self.visit_FunctionDef(node)
         
-        # If there are blocks outside of classes, create a default sprite
+        # If there are blocks outside of classes (from top-level when_ functions), 
+        # create a default sprite
         if self.blocks:
             self.targets.insert(0, {
                 'name': 'Sprite1',
