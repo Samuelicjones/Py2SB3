@@ -34,7 +34,7 @@ pip install -e .
 ### Writing Scratch in Python
 
 ```python
-from scratch import transpile_to_json, save_sb3
+from scratch import create_scratch_file
 from scratch.dsl import *  # IDE autocomplete for all blocks
 
 class Cat:
@@ -48,10 +48,43 @@ class Cat:
     def when_key_space(self):
         play_sound("Meow")
 
-# Compile to .sb3
-code = open("my_game.py").read()
-json_str = transpile_to_json(code)
-save_sb3(json_str, "my_game.sb3")
+# Compile to .sb3 (auto-names based on file)
+create_scratch_file()
+
+# Or specify output path
+create_scratch_file("my_game.sb3")
+```
+
+### Custom Sprites and Assets
+
+```python
+from scratch import create_scratch_file
+from scratch.dsl import *
+
+# Custom backdrop for stage
+configure_stage(
+    backdrops=[
+        Backdrop("sky", file="backgrounds/sky.png"),
+        Backdrop("night", svg_string='<svg>...</svg>'),
+    ]
+)
+
+# Custom sprite with your own images
+@sprite(
+    costumes=[
+        Costume("idle", file="sprites/player_idle.png"),
+        Costume("jump", file="sprites/player_jump.png"),
+    ],
+    sounds=[
+        Sound("jump_sfx", file="sounds/jump.wav"),
+    ],
+    x=0, y=0, size=100
+)
+class Player:
+    def when_flag_clicked(self):
+        say("Custom sprite!")
+
+create_scratch_file()
 ```
 
 ### Converting Scratch to Python
@@ -74,6 +107,8 @@ roundtrip_sb3("input.sb3", "output.sb3", py_path="intermediate.py")
 
 ## CLI Commands
 
+### Conversion Commands
+
 ```bash
 # Python to Scratch
 scratch py2sb3 game.py game.sb3
@@ -86,6 +121,45 @@ scratch roundtrip input.sb3 output.sb3 --py intermediate.py
 
 # Show project info
 scratch info project.sb3
+```
+
+### Block Reference
+
+The `scratch blocks` command shows all available Python functions for Scratch blocks:
+
+```bash
+# Show all categories
+scratch blocks
+
+# Show specific category
+scratch blocks motion      # Motion blocks
+scratch blocks looks       # Looks blocks
+scratch blocks sound       # Sound blocks
+scratch blocks events      # Event handlers
+scratch blocks control     # Control flow
+scratch blocks sensing     # Sensing blocks
+scratch blocks operators   # Math & string operators
+scratch blocks variables   # Variable syntax
+scratch blocks lists       # List operations
+scratch blocks custom      # Custom blocks (procedures)
+scratch blocks sprites     # Using library sprites
+scratch blocks costumes    # Working with costumes
+scratch blocks backdrops   # Stage backdrops
+scratch blocks custom_assets  # Custom images & sounds
+scratch blocks quickstart  # Quick start guide
+```
+
+### Examples
+
+```bash
+# Learn how to use variables
+scratch blocks variables
+
+# See all motion functions
+scratch blocks motion
+
+# Quick start tutorial
+scratch blocks quickstart
 ```
 
 ## Sprite Classes

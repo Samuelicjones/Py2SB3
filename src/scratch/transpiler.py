@@ -1240,6 +1240,173 @@ class ScratchTranspiler(ast.NodeVisitor):
         # The if block is now the previous block for anything that follows
         self.previous_block_id = if_block_id
     
+    def _extract_sprite_config(self, node: ast.ClassDef) -> Optional[Dict[str, Any]]:
+        """
+        Extract @sprite decorator configuration from a class definition.
+        
+        Returns dict with costumes, sounds, x, y, size, etc. if decorated,
+        or None if no @sprite decorator is present.
+        """
+        for decorator in node.decorator_list:
+            if isinstance(decorator, ast.Call):
+                # @sprite(costumes=[...], sounds=[...], x=0, y=0)
+                if isinstance(decorator.func, ast.Name) and decorator.func.id == 'sprite':
+                    config = {
+                        'costumes': [],
+                        'sounds': [],
+                        'x': 0,
+                        'y': 0,
+                        'size': 100,
+                        'direction': 90,
+                        'rotation_style': 'all around',
+                        'visible': True,
+                        'draggable': False
+                    }
+                    
+                    # Extract keyword arguments
+                    for kw in decorator.keywords:
+                        if kw.arg == 'x' and isinstance(kw.value, (ast.Constant, ast.Num)):
+                            config['x'] = kw.value.n if hasattr(kw.value, 'n') else kw.value.value
+                        elif kw.arg == 'y' and isinstance(kw.value, (ast.Constant, ast.Num)):
+                            config['y'] = kw.value.n if hasattr(kw.value, 'n') else kw.value.value
+                        elif kw.arg == 'size' and isinstance(kw.value, (ast.Constant, ast.Num)):
+                            config['size'] = kw.value.n if hasattr(kw.value, 'n') else kw.value.value
+                        elif kw.arg == 'direction' and isinstance(kw.value, (ast.Constant, ast.Num)):
+                            config['direction'] = kw.value.n if hasattr(kw.value, 'n') else kw.value.value
+                        elif kw.arg == 'rotation_style' and isinstance(kw.value, (ast.Constant, ast.Str)):
+                            config['rotation_style'] = kw.value.s if hasattr(kw.value, 's') else kw.value.value
+                        elif kw.arg == 'visible' and isinstance(kw.value, (ast.Constant, ast.NameConstant)):
+                            config['visible'] = kw.value.value
+                        elif kw.arg == 'draggable' and isinstance(kw.value, (ast.Constant, ast.NameConstant)):
+                            config['draggable'] = kw.value.value
+                        elif kw.arg == 'costumes' and isinstance(kw.value, ast.List):
+                            # Extract costume definitions
+                            for costume_node in kw.value.elts:
+                                costume_info = self._extract_costume_info(costume_node)
+                                if costume_info:
+                                    config['costumes'].append(costume_info)
+                        elif kw.arg == 'sounds' and isinstance(kw.value, ast.List):
+                            # Extract sound definitions
+                            for sound_node in kw.value.elts:
+                                sound_info = self._extract_sound_info(sound_node)
+                                if sound_info:
+                                    config['sounds'].append(sound_info)
+                    
+                    return config
+        return None
+    
+    def _extract_costume_info(self, node: ast.Call) -> Optional[Dict[str, Any]]:
+        """Extract costume info from a Costume(...) call."""
+        if not isinstance(node, ast.Call):
+            return None
+        
+        if isinstance(node.func, ast.Name) and node.func.id == 'Costume':
+            info = {'name': None, 'file_path': None, 'svg_string': None,
+                    'rotation_center_x': None, 'rotation_center_y': None}
+            
+            # Positional args: name, file_path
+            if len(node.args) >= 1:
+                arg = node.args[0]
+                if isinstance(arg, (ast.Constant, ast.Str)):
+                    info['name'] = arg.s if hasattr(arg, 's') else arg.value
+            if len(node.args) >= 2:
+                arg = node.args[1]
+                if isinstance(arg, (ast.Constant, ast.Str)):
+                    info['file_path'] = arg.s if hasattr(arg, 's') else arg.value
+            
+            # Keyword args
+            for kw in node.keywords:
+                if kw.arg == 'svg_string' and isinstance(kw.value, (ast.Constant, ast.Str)):
+                    info['svg_string'] = kw.value.s if hasattr(kw.value, 's') else kw.value.value
+                elif kw.arg == 'rotation_center_x' and isinstance(kw.value, (ast.Constant, ast.Num)):
+                    info['rotation_center_x'] = kw.value.n if hasattr(kw.value, 'n') else kw.value.value
+                elif kw.arg == 'rotation_center_y' and isinstance(kw.value, (ast.Constant, ast.Num)):
+                    info['rotation_center_y'] = kw.value.n if hasattr(kw.value, 'n') else kw.value.value
+            
+            return info
+        return None
+    
+    def _extract_sound_info(self, node: ast.Call) -> Optional[Dict[str, Any]]:
+        """Extract sound info from a Sound(...) call."""
+        if not isinstance(node, ast.Call):
+            return None
+        
+        if isinstance(node.func, ast.Name) and node.func.id == 'Sound':
+            info = {'name': None, 'file_path': None}
+            
+            # Positional args: name, file_path
+            if len(node.args) >= 1:
+                arg = node.args[0]
+                if isinstance(arg, (ast.Constant, ast.Str)):
+                    info['name'] = arg.s if hasattr(arg, 's') else arg.value
+            if len(node.args) >= 2:
+                arg = node.args[1]
+                if isinstance(arg, (ast.Constant, ast.Str)):
+                    info['file_path'] = arg.s if hasattr(arg, 's') else arg.value
+            
+            return info
+        return None
+    
+    def _extract_stage_config(self, tree: ast.Module) -> Optional[Dict[str, Any]]:
+        """
+        Extract configure_stage(...) call configuration from module.
+        """
+        for node in tree.body:
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                call = node.value
+                if isinstance(call.func, ast.Name) and call.func.id == 'configure_stage':
+                    config = {
+                        'backdrops': [],
+                        'sounds': [],
+                        'tempo': 60,
+                        'volume': 100
+                    }
+                    
+                    for kw in call.keywords:
+                        if kw.arg == 'tempo' and isinstance(kw.value, (ast.Constant, ast.Num)):
+                            config['tempo'] = kw.value.n if hasattr(kw.value, 'n') else kw.value.value
+                        elif kw.arg == 'volume' and isinstance(kw.value, (ast.Constant, ast.Num)):
+                            config['volume'] = kw.value.n if hasattr(kw.value, 'n') else kw.value.value
+                        elif kw.arg == 'backdrops' and isinstance(kw.value, ast.List):
+                            for backdrop_node in kw.value.elts:
+                                backdrop_info = self._extract_backdrop_info(backdrop_node)
+                                if backdrop_info:
+                                    config['backdrops'].append(backdrop_info)
+                        elif kw.arg == 'sounds' and isinstance(kw.value, ast.List):
+                            for sound_node in kw.value.elts:
+                                sound_info = self._extract_sound_info(sound_node)
+                                if sound_info:
+                                    config['sounds'].append(sound_info)
+                    
+                    return config
+        return None
+    
+    def _extract_backdrop_info(self, node: ast.Call) -> Optional[Dict[str, Any]]:
+        """Extract backdrop info from a Backdrop(...) call."""
+        if not isinstance(node, ast.Call):
+            return None
+        
+        if isinstance(node.func, ast.Name) and node.func.id == 'Backdrop':
+            info = {'name': None, 'file_path': None, 'svg_string': None}
+            
+            # Positional args: name, file_path
+            if len(node.args) >= 1:
+                arg = node.args[0]
+                if isinstance(arg, (ast.Constant, ast.Str)):
+                    info['name'] = arg.s if hasattr(arg, 's') else arg.value
+            if len(node.args) >= 2:
+                arg = node.args[1]
+                if isinstance(arg, (ast.Constant, ast.Str)):
+                    info['file_path'] = arg.s if hasattr(arg, 's') else arg.value
+            
+            # Keyword args
+            for kw in node.keywords:
+                if kw.arg == 'svg_string' and isinstance(kw.value, (ast.Constant, ast.Str)):
+                    info['svg_string'] = kw.value.s if hasattr(kw.value, 's') else kw.value.value
+            
+            return info
+        return None
+
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         """
         Visit a class definition - each class becomes a Scratch Sprite.
@@ -1248,6 +1415,9 @@ class ScratchTranspiler(ast.NodeVisitor):
         Methods inside the class become scripts for that sprite.
         """
         sprite_name = node.name
+        
+        # Extract @sprite decorator configuration if present
+        sprite_config = self._extract_sprite_config(node)
         
         # Save any current state
         saved_blocks = self.blocks
@@ -1306,15 +1476,21 @@ class ScratchTranspiler(ast.NodeVisitor):
             if isinstance(item, ast.FunctionDef):
                 self._visit_sprite_method(item)
         
-        # Store this sprite's data
-        self.targets.append({
+        # Store this sprite's data (include config if decorated with @sprite)
+        target_data = {
             'name': sprite_name,
             'blocks': self.blocks,
             'variables': self.variable_definitions,
             'lists': self.list_definitions,
             'broadcasts': self.broadcast_ids.copy(),
             'sounds_used': self.sounds_used.copy(),
-        })
+        }
+        
+        # Add sprite config if present
+        if sprite_config:
+            target_data['sprite_config'] = sprite_config
+        
+        self.targets.append(target_data)
         
         # Restore previous state (for any code outside classes)
         self.blocks = saved_blocks
@@ -1333,7 +1509,8 @@ class ScratchTranspiler(ast.NodeVisitor):
         """
         # Skip 'self' in method signature - it's just a Python convention
         
-        if node.name == 'when_flag_clicked':
+        # Check for when_flag_clicked or when_flag_clicked_2, when_flag_clicked_3, etc.
+        if node.name == 'when_flag_clicked' or (node.name.startswith('when_flag_clicked_') and node.name[18:].isdigit()):
             # Create the hat block (event_whenflagclicked)
             self._create_block(
                 opcode='event_whenflagclicked',
@@ -1372,7 +1549,7 @@ class ScratchTranspiler(ast.NodeVisitor):
             self.previous_block_id = None
             self.hat_block_id = None
             
-        elif node.name == 'when_i_start_as_clone':
+        elif node.name == 'when_i_start_as_clone' or (node.name.startswith('when_i_start_as_clone_') and node.name[22:].isdigit()):
             # Clone start event
             self._create_block(
                 opcode='control_start_as_clone',
@@ -1386,7 +1563,7 @@ class ScratchTranspiler(ast.NodeVisitor):
             self.previous_block_id = None
             self.hat_block_id = None
             
-        elif node.name == 'when_clicked':
+        elif node.name == 'when_clicked' or (node.name.startswith('when_clicked_') and node.name[13:].isdigit()):
             # When this sprite clicked
             self._create_block(
                 opcode='event_whenthisspriteclicked',
@@ -1403,6 +1580,8 @@ class ScratchTranspiler(ast.NodeVisitor):
         elif node.name.startswith('when_backdrop_'):
             # when_backdrop_backdrop1, etc.
             backdrop_name = node.name[14:]  # Remove 'when_backdrop_' prefix
+            # Convert underscores back to spaces (reverse of _to_identifier)
+            backdrop_name = backdrop_name.replace('_', ' ')
             
             block_id = self._create_block(
                 opcode='event_whenbackdropswitchesto',
@@ -1420,6 +1599,8 @@ class ScratchTranspiler(ast.NodeVisitor):
         elif node.name.startswith('when_broadcast_'):
             # when_broadcast_message1 -> event_whenbroadcastreceived
             message_name = node.name[15:]  # Remove 'when_broadcast_' prefix
+            # Convert underscores back to spaces (reverse of _to_identifier)
+            message_name = message_name.replace('_', ' ')
             
             # Get or create broadcast ID
             broadcast_id = self._get_or_create_broadcast(message_name)
@@ -1494,7 +1675,8 @@ class ScratchTranspiler(ast.NodeVisitor):
         and process the function body as the script.
         Code outside classes goes to a default sprite.
         """
-        if node.name == 'when_flag_clicked':
+        # Check for when_flag_clicked or when_flag_clicked_2, when_flag_clicked_3, etc.
+        if node.name == 'when_flag_clicked' or (node.name.startswith('when_flag_clicked_') and node.name[18:].isdigit()):
             # Create the hat block (event_whenflagclicked)
             self._create_block(
                 opcode='event_whenflagclicked',
@@ -1687,22 +1869,35 @@ class ScratchTranspiler(ast.NodeVisitor):
                                                       str(target_value), block_id)
                     self.blocks[block_id]["inputs"][input_name] = [1, menu_id]
             else:
-                # go_to, point_towards, play_sound, etc. - single target argument
+                # go_to, point_towards, play_sound, switch_costume, etc. - single target argument
                 block_id = self._create_block(opcode=opcode, inputs={})
                 
                 if node.args:
                     target_value = self._extract_value(node.args[0])
-                    if isinstance(target_value, str):
-                        # For motion blocks, handle special targets
-                        if func_name in ('go_to', 'point_towards'):
-                            target_value = self._handle_motion_target(target_value)
-                        # For sound blocks, track the sound name
-                        elif func_name in ('play_sound', 'start_sound', 'play_sound_until_done'):
-                            self.sounds_used.add(target_value)
                     
-                    menu_id = self._create_menu_block(menu_opcode, menu_field,
-                                                      str(target_value), block_id)
-                    self.blocks[block_id]["inputs"][input_name] = [1, menu_id]
+                    # Check if this is a block reference (expression like letter_of)
+                    if isinstance(target_value, tuple) and target_value[0] == '__BLOCK__':
+                        # Use the reporter block directly instead of a menu
+                        reporter_block_id = target_value[1]
+                        self.blocks[reporter_block_id]["parent"] = block_id
+                        self.blocks[block_id]["inputs"][input_name] = [3, reporter_block_id, [10, ""]]
+                    elif isinstance(target_value, tuple) and target_value[0] == '__VAR__':
+                        # Variable reference - create variable input
+                        var_name = target_value[1]
+                        var_id = self._get_or_create_variable(var_name)
+                        self.blocks[block_id]["inputs"][input_name] = [3, [12, var_name, var_id], [10, ""]]
+                    else:
+                        if isinstance(target_value, str):
+                            # For motion blocks, handle special targets
+                            if func_name in ('go_to', 'point_towards'):
+                                target_value = self._handle_motion_target(target_value)
+                            # For sound blocks, track the sound name
+                            elif func_name in ('play_sound', 'start_sound', 'play_sound_until_done'):
+                                self.sounds_used.add(target_value)
+                        
+                        menu_id = self._create_menu_block(menu_opcode, menu_field,
+                                                          str(target_value), block_id)
+                        self.blocks[block_id]["inputs"][input_name] = [1, menu_id]
             
             return None
         
@@ -2122,6 +2317,7 @@ class ScratchTranspiler(ast.NodeVisitor):
             - variables: Dictionary of variable definitions
             - lists: Dictionary of list definitions
             - broadcasts: Dictionary of broadcast definitions
+            - stage_config: Optional stage configuration (backdrops, sounds)
         """
         # Reset all state
         self.blocks = {}
@@ -2140,9 +2336,13 @@ class ScratchTranspiler(ast.NodeVisitor):
         self.current_sprite_name = None
         self.stage_blocks = {}
         self.stage_variables = {}
+        self.stage_config = None
         
         # Parse the Python code into an AST
         tree = ast.parse(source_code)
+        
+        # Extract stage configuration if configure_stage() was called
+        self.stage_config = self._extract_stage_config(tree)
         
         # Only visit class definitions (sprites) and top-level function definitions (hat blocks)
         # Ignore imports, assignments, and other module-level code
@@ -2166,24 +2366,53 @@ class ScratchTranspiler(ast.NodeVisitor):
                 'broadcasts': self.broadcast_ids,
             })
         
-        return self.targets
+        # Return targets along with stage config
+        return {
+            'targets': self.targets,
+            'stage_config': self.stage_config
+        }
 
 
-def create_project_json(targets: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+def create_project_json(transpile_result: Any = None, base_path: str = None) -> Tuple[Dict[str, Any], Dict[str, bytes]]:
     """
     Create a complete Scratch 3.0 project.json structure.
     
     Args:
-        targets: List of target dictionaries from transpiler, each with:
-                 - name: Sprite name (used to look up in sprite library)
-                 - blocks: Dictionary of blocks
-                 - variables: Dictionary of variable definitions
+        transpile_result: Either:
+            - List of target dictionaries (old format for backward compatibility)
+            - Dict with 'targets' and 'stage_config' keys (new format)
+        base_path: Base path for resolving relative asset file paths
         
     Returns:
-        Complete project.json dictionary
+        Tuple of (project_dict, custom_assets_dict)
+        where custom_assets_dict maps md5ext -> bytes for custom assets
     """
-    if targets is None:
+    # Handle both old and new format
+    if transpile_result is None:
         targets = []
+        stage_config = None
+    elif isinstance(transpile_result, dict) and 'targets' in transpile_result:
+        # New format with stage_config
+        targets = transpile_result.get('targets', [])
+        stage_config = transpile_result.get('stage_config')
+    else:
+        # Old format - just a list of targets
+        targets = transpile_result
+        stage_config = None
+    
+    # Custom assets collected during processing
+    custom_assets: Dict[str, bytes] = {}
+    
+    # Import asset utilities
+    try:
+        from .assets import (
+            load_costume_from_file, load_costume_from_svg,
+            load_backdrop_from_file, load_backdrop_from_svg,
+            load_sound_from_file, create_default_costume_svg
+        )
+        ASSETS_AVAILABLE = True
+    except ImportError:
+        ASSETS_AVAILABLE = False
     
     # Default backdrop - use embedded SVG (simple blue background)
     backdrop_hash = hashlib.md5(BACKDROP_SVG.encode()).hexdigest()
@@ -2195,6 +2424,48 @@ def create_project_json(targets: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         "rotationCenterX": 240,
         "rotationCenterY": 180
     }
+    backdrops = [backdrop_costume]
+    stage_sounds = []
+    stage_tempo = 60
+    stage_volume = 100
+    
+    # Process stage configuration if present
+    if stage_config and ASSETS_AVAILABLE:
+        # Custom backdrops
+        if stage_config.get('backdrops'):
+            backdrops = []
+            for bd_info in stage_config['backdrops']:
+                try:
+                    if bd_info.get('svg_string'):
+                        bd_dict, bd_data = load_backdrop_from_svg(
+                            bd_info['name'], bd_info['svg_string']
+                        )
+                    elif bd_info.get('file_path'):
+                        bd_dict, bd_data = load_backdrop_from_file(
+                            bd_info['name'], bd_info['file_path'], base_path
+                        )
+                    else:
+                        continue
+                    backdrops.append(bd_dict)
+                    custom_assets[bd_dict['md5ext']] = bd_data
+                except Exception as e:
+                    print(f"  Warning: Could not load backdrop '{bd_info.get('name')}': {e}")
+        
+        # Custom stage sounds
+        if stage_config.get('sounds'):
+            for snd_info in stage_config['sounds']:
+                try:
+                    if snd_info.get('file_path'):
+                        snd_dict, snd_data = load_sound_from_file(
+                            snd_info['name'], snd_info['file_path'], base_path
+                        )
+                        stage_sounds.append(snd_dict)
+                        custom_assets[snd_dict['md5ext']] = snd_data
+                except Exception as e:
+                    print(f"  Warning: Could not load sound '{snd_info.get('name')}': {e}")
+        
+        stage_tempo = stage_config.get('tempo', 60)
+        stage_volume = stage_config.get('volume', 100)
     
     # Stage target (required, always first)
     stage = {
@@ -2206,11 +2477,11 @@ def create_project_json(targets: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         "blocks": {},
         "comments": {},
         "currentCostume": 0,
-        "costumes": [backdrop_costume],
-        "sounds": [],
-        "volume": 100,
+        "costumes": backdrops,
+        "sounds": stage_sounds,
+        "volume": stage_volume,
         "layerOrder": 0,
-        "tempo": 60,
+        "tempo": stage_tempo,
         "videoTransparency": 50,
         "videoState": "on",
         "textToSpeechLanguage": None
@@ -2221,17 +2492,77 @@ def create_project_json(targets: List[Dict[str, Any]] = None) -> Dict[str, Any]:
     # Create sprite targets from the transpiler output
     for i, target_data in enumerate(targets):
         sprite_name = target_data.get('name', f'Sprite{i+1}')
+        sprite_config = target_data.get('sprite_config')
         
-        # Try to get costumes/sounds from sprite library
+        # Check if we have custom costumes/sounds from @sprite decorator
         costumes = None
         sounds = None
+        sprite_x = i * 100 - 100
+        sprite_y = 0
+        sprite_size = 100
+        sprite_direction = 90
+        sprite_rotation_style = "all around"
+        sprite_visible = True
+        sprite_draggable = False
         
-        if SPRITE_LIBRARY_AVAILABLE:
-            # Try exact match first, then fuzzy match
-            actual_name = find_sprite_by_name(sprite_name, fuzzy=True)
-            if actual_name:
-                costumes = get_costume_data_for_project(actual_name)
-                sounds = get_sound_data_for_project(actual_name)
+        if sprite_config and ASSETS_AVAILABLE:
+            # Use custom costumes from @sprite decorator
+            if sprite_config.get('costumes'):
+                costumes = []
+                for cos_info in sprite_config['costumes']:
+                    try:
+                        if cos_info.get('svg_string'):
+                            cos_dict, cos_data = load_costume_from_svg(
+                                cos_info['name'], cos_info['svg_string'],
+                                cos_info.get('rotation_center_x'),
+                                cos_info.get('rotation_center_y')
+                            )
+                        elif cos_info.get('file_path'):
+                            cos_dict, cos_data = load_costume_from_file(
+                                cos_info['name'], cos_info['file_path'],
+                                cos_info.get('rotation_center_x'),
+                                cos_info.get('rotation_center_y'),
+                                base_path
+                            )
+                        else:
+                            continue
+                        costumes.append(cos_dict)
+                        custom_assets[cos_dict['md5ext']] = cos_data
+                    except Exception as e:
+                        print(f"  Warning: Could not load costume '{cos_info.get('name')}': {e}")
+            
+            # Use custom sounds from @sprite decorator
+            if sprite_config.get('sounds'):
+                sounds = []
+                for snd_info in sprite_config['sounds']:
+                    try:
+                        if snd_info.get('file_path'):
+                            snd_dict, snd_data = load_sound_from_file(
+                                snd_info['name'], snd_info['file_path'], base_path
+                            )
+                            sounds.append(snd_dict)
+                            custom_assets[snd_dict['md5ext']] = snd_data
+                    except Exception as e:
+                        print(f"  Warning: Could not load sound '{snd_info.get('name')}': {e}")
+            
+            # Sprite properties
+            sprite_x = sprite_config.get('x', sprite_x)
+            sprite_y = sprite_config.get('y', sprite_y)
+            sprite_size = sprite_config.get('size', sprite_size)
+            sprite_direction = sprite_config.get('direction', sprite_direction)
+            sprite_rotation_style = sprite_config.get('rotation_style', sprite_rotation_style)
+            sprite_visible = sprite_config.get('visible', sprite_visible)
+            sprite_draggable = sprite_config.get('draggable', sprite_draggable)
+        
+        # If no custom costumes, try sprite library
+        if not costumes:
+            if SPRITE_LIBRARY_AVAILABLE:
+                # Try exact match first, then fuzzy match
+                actual_name = find_sprite_by_name(sprite_name, fuzzy=True)
+                if actual_name:
+                    costumes = get_costume_data_for_project(actual_name)
+                    if not sounds:
+                        sounds = get_sound_data_for_project(actual_name)
         
         # Fall back to embedded Cat if sprite not in library
         if not costumes:
@@ -2289,13 +2620,13 @@ def create_project_json(targets: List[Dict[str, Any]] = None) -> Dict[str, Any]:
             "sounds": sounds,
             "volume": 100,
             "layerOrder": i + 1,
-            "visible": True,
-            "x": i * 100 - 100,  # Spread sprites out
-            "y": 0,
-            "size": 100,
-            "direction": 90,
-            "draggable": False,
-            "rotationStyle": "all around"
+            "visible": sprite_visible,
+            "x": sprite_x,
+            "y": sprite_y,
+            "size": sprite_size,
+            "direction": sprite_direction,
+            "draggable": sprite_draggable,
+            "rotationStyle": sprite_rotation_style
         }
         all_targets.append(sprite)
     
@@ -2311,24 +2642,26 @@ def create_project_json(targets: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         }
     }
     
-    return project
+    return project, custom_assets
 
 
-def transpile_to_json(source_code: str, indent: int = 2) -> str:
+def transpile_to_json(source_code: str, indent: int = 2, base_path: str = None) -> Tuple[str, Dict[str, bytes]]:
     """
     Main entry point: Transpile Python code to Scratch project.json string.
     
     Args:
         source_code: Python source code to transpile
         indent: JSON indentation level (default: 2)
+        base_path: Base path for resolving relative asset file paths
         
     Returns:
-        JSON string of the complete Scratch project
+        Tuple of (json_string, custom_assets_dict)
+        where custom_assets_dict maps md5ext -> bytes
     """
     transpiler = ScratchTranspiler()
-    targets = transpiler.transpile(source_code)
-    project = create_project_json(targets)
-    return json.dumps(project, indent=indent)
+    result = transpiler.transpile(source_code)
+    project, custom_assets = create_project_json(result, base_path)
+    return json.dumps(project, indent=indent), custom_assets
 
 
 # ============================================================================
@@ -2464,7 +2797,8 @@ ASSET_ID_TO_EMBEDDED = {
     "cd21514d0531fdffb22204e0ec5ed84a": "backdrop1",
 }
 
-def save_sb3(json_content: str, filename: str = "output.sb3", source_sb3: str = None) -> None:
+def save_sb3(json_content: str, filename: str = "output.sb3", source_sb3: str = None, 
+             custom_assets: Dict[str, bytes] = None) -> None:
     """
     Save the project.json as a .sb3 file (ZIP archive) with embedded assets.
     
@@ -2475,7 +2809,11 @@ def save_sb3(json_content: str, filename: str = "output.sb3", source_sb3: str = 
         json_content: The project.json string
         filename: Output filename (default: "output.sb3")
         source_sb3: Optional source .sb3 file to copy assets from (for round-trip)
+        custom_assets: Dictionary mapping md5ext -> bytes for custom assets
     """
+    if custom_assets is None:
+        custom_assets = {}
+    
     # Parse project.json to find all required assets
     project_data = json.loads(json_content)
     required_assets = set()
@@ -2509,7 +2847,12 @@ def save_sb3(json_content: str, filename: str = "output.sb3", source_sb3: str = 
         for md5ext in required_assets:
             asset_id, data_format = md5ext.rsplit('.', 1)
             
-            # First, try to get from source .sb3 (for round-trip)
+            # First, check custom assets (from @sprite decorator or configure_stage)
+            if md5ext in custom_assets:
+                zf.writestr(md5ext, custom_assets[md5ext])
+                continue
+            
+            # Next, try to get from source .sb3 (for round-trip)
             if md5ext in source_assets:
                 zf.writestr(md5ext, source_assets[md5ext])
                 continue
@@ -3683,7 +4026,7 @@ def roundtrip_sb3(sb3_path: str, output_path: str = None, py_path: str = None) -
         print(f"  Intermediate: {py_path}")
     
     # Step 2: Convert Python back to project.json
-    json_str = transpile_to_json(python_code)
+    json_str, _ = transpile_to_json(python_code)  # Ignore custom_assets for roundtrip
     
     # Step 3: Parse and merge with original project to preserve asset metadata
     # Load original project.json to get costume/backdrop/sound definitions

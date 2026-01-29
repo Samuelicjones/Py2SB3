@@ -538,6 +538,234 @@ def tempo() -> Number:
 # ============================================================================
 # Export all functions
 # ============================================================================
+# Sprite and Backdrop Builders
+# ============================================================================
+
+class Costume:
+    """
+    Define a custom costume for a sprite.
+    
+    Example:
+        costume = Costume("my_costume", "path/to/image.png")
+        costume = Costume("my_costume", "path/to/image.svg")
+        costume = Costume("my_costume", svg_string="<svg>...</svg>")
+    """
+    def __init__(
+        self, 
+        name: str, 
+        file_path: str = None, 
+        *, 
+        svg_string: str = None,
+        rotation_center_x: Number = None,
+        rotation_center_y: Number = None
+    ):
+        self.name = name
+        self.file_path = file_path
+        self.svg_string = svg_string
+        self.rotation_center_x = rotation_center_x
+        self.rotation_center_y = rotation_center_y
+        
+        if file_path is None and svg_string is None:
+            raise ValueError("Must provide either file_path or svg_string")
+
+
+class Sound:
+    """
+    Define a custom sound for a sprite.
+    
+    Example:
+        sound = Sound("my_sound", "path/to/sound.wav")
+        sound = Sound("my_sound", "path/to/sound.mp3")
+    """
+    def __init__(
+        self,
+        name: str,
+        file_path: str,
+        *,
+        rate: int = None,
+        sample_count: int = None
+    ):
+        self.name = name
+        self.file_path = file_path
+        self.rate = rate
+        self.sample_count = sample_count
+
+
+class SpriteConfig:
+    """
+    Configuration for a custom sprite with custom costumes and sounds.
+    
+    Use as a class decorator or inherit from it to configure sprites.
+    
+    Example:
+        @sprite(
+            costumes=[
+                Costume("costume1", "player1.png"),
+                Costume("costume2", "player2.png"),
+            ],
+            sounds=[
+                Sound("jump", "jump.wav"),
+            ],
+            x=0, y=0, size=100
+        )
+        class Player:
+            def when_flag_clicked(self):
+                say("Hello!")
+    """
+    def __init__(
+        self,
+        costumes: List['Costume'] = None,
+        sounds: List['Sound'] = None,
+        x: Number = 0,
+        y: Number = 0,
+        size: Number = 100,
+        direction: Number = 90,
+        rotation_style: str = "all around",
+        visible: bool = True,
+        draggable: bool = False
+    ):
+        self.costumes = costumes or []
+        self.sounds = sounds or []
+        self.x = x
+        self.y = y
+        self.size = size
+        self.direction = direction
+        self.rotation_style = rotation_style
+        self.visible = visible
+        self.draggable = draggable
+
+
+def sprite(
+    costumes: List[Costume] = None,
+    sounds: List[Sound] = None,
+    x: Number = 0,
+    y: Number = 0,
+    size: Number = 100,
+    direction: Number = 90,
+    rotation_style: str = "all around",
+    visible: bool = True,
+    draggable: bool = False
+):
+    """
+    Decorator to configure a sprite class with custom costumes and sounds.
+    
+    Example:
+        @sprite(
+            costumes=[
+                Costume("idle", "sprites/player_idle.png"),
+                Costume("walk", "sprites/player_walk.png"),
+            ],
+            sounds=[
+                Sound("jump", "sounds/jump.wav"),
+            ],
+            x=-100, y=0, size=50
+        )
+        class Player:
+            def when_flag_clicked(self):
+                while True:
+                    if key_pressed("space"):
+                        play_sound("jump")
+                        change_y(50)
+    """
+    def decorator(cls):
+        # Store configuration as class attribute for transpiler to read
+        cls._sprite_config = SpriteConfig(
+            costumes=costumes,
+            sounds=sounds,
+            x=x, y=y, size=size,
+            direction=direction,
+            rotation_style=rotation_style,
+            visible=visible,
+            draggable=draggable
+        )
+        return cls
+    return decorator
+
+
+class BackdropConfig:
+    """
+    Configuration for custom stage backdrops.
+    
+    Example:
+        backdrops = BackdropConfig([
+            Backdrop("forest", "backgrounds/forest.png"),
+            Backdrop("cave", "backgrounds/cave.png"),
+        ])
+    """
+    def __init__(self, backdrops: List['Backdrop'] = None):
+        self.backdrops = backdrops or []
+
+
+class Backdrop:
+    """
+    Define a custom backdrop for the stage.
+    
+    Example:
+        backdrop = Backdrop("my_backdrop", "path/to/image.png")
+        backdrop = Backdrop("my_backdrop", svg_string="<svg>...</svg>")
+    """
+    def __init__(
+        self,
+        name: str,
+        file_path: str = None,
+        *,
+        svg_string: str = None
+    ):
+        self.name = name
+        self.file_path = file_path
+        self.svg_string = svg_string
+        
+        if file_path is None and svg_string is None:
+            raise ValueError("Must provide either file_path or svg_string")
+
+
+# Global stage configuration (set before classes)
+_stage_config = None
+
+def configure_stage(
+    backdrops: List[Backdrop] = None,
+    sounds: List[Sound] = None,
+    tempo: int = 60,
+    volume: int = 100
+):
+    """
+    Configure the stage with custom backdrops and sounds.
+    
+    Call this at the top of your file, before defining sprite classes.
+    
+    Example:
+        from scratch.dsl import *
+        
+        configure_stage(
+            backdrops=[
+                Backdrop("forest", "backgrounds/forest.png"),
+                Backdrop("cave", "backgrounds/cave.svg"),
+                Backdrop("sky", svg_string='<svg>...</svg>'),
+            ],
+            sounds=[
+                Sound("background_music", "music/theme.mp3"),
+            ]
+        )
+        
+        class Player:
+            def when_flag_clicked(self):
+                switch_backdrop("forest")
+    """
+    global _stage_config
+    _stage_config = {
+        'backdrops': backdrops or [],
+        'sounds': sounds or [],
+        'tempo': tempo,
+        'volume': volume
+    }
+
+
+def get_stage_config():
+    """Get the current stage configuration (used by transpiler)."""
+    return _stage_config
+
+
+# ============================================================================
 
 __all__ = [
     # Motion
@@ -586,4 +814,8 @@ __all__ = [
     
     # Types
     'Number', 'ScratchValue',
+    
+    # Sprite/Backdrop configuration
+    'Costume', 'Sound', 'Backdrop', 'SpriteConfig', 'BackdropConfig',
+    'sprite', 'configure_stage', 'get_stage_config',
 ]
